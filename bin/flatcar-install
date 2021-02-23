@@ -404,7 +404,7 @@ function save_image_to_disk() {
     wget ${WGET_ARGS} --no-verbose -O "${WORKDIR}/${SIG_NAME}" "${SIG_URL}"
 
     echo "Downloading image to disk, and verifying ${IMAGE_NAME}..."
-    if ! wget ${WGET_ARGS} --no-verbose -O - "${IMAGE_URL} ." \
+    if ! wget ${WGET_ARGS} "${IMAGE_URL}" \
         | gpg --batch --trusted-key "${GPG_LONG_ID}" \
             --verify "${WORKDIR}/${SIG_NAME}" -
     then
