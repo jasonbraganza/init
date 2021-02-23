@@ -67,6 +67,7 @@ done
 USAGE="Usage: $0 {{-d <device>}|-s} [options]
 Options:
     -d DEVICE   Install Flatcar Container Linux to the given device.
+    -D          Download Flatcar Container Linux to the current directory.
     -s          EXPERIMENTAL: Install Flatcar Container Linux to the smallest unmounted disk found
                 (min. size 10GB). It is recommended to use it with -e or -I to filter the
                 block devices by their major numbers. E.g., -e 7 to exclude loop devices
@@ -341,7 +342,84 @@ VERSION_SUMMARY='Flatcar Container Linux'
 
 WGET_ARGS="--tries 10 --timeout=20 --retry-connrefused"
 
-while getopts "V:B:C:I:d:o:c:e:i:t:b:k:f:nsyvh" OPTION
+function save_image_to_disk() {
+    # Ensure that required executables exist before proceeding
+    type -P wget >/dev/null || { echo 'Missing wget!' >&2 ; exit 1 ; }
+    type -P gpg >/dev/null || { echo 'Missing gpg!' >&2 ; exit 1 ; }
+
+    local IMAGE_NAME="flatcar_production_image.bin.bz2"
+    if [[ -n "${OEM_ID}" ]]; then
+        IMAGE_NAME="flatcar_production_${OEM_ID}_image.bin.bz2"
+    fi
+
+    if [[ -n "${CHANNEL_SPECIFIED-}" && -z "${VERSION_SPECIFIED-}" ]]; then
+        VERSION_ID=current
+    fi
+
+    # for compatibility with old versions that didn't support channels
+    if [[ "${VERSION_ID}" =~ ^(alpha|beta|stable|edge)$ ]]; then
+        CHANNEL_ID="${VERSION_ID}"
+        VERSION_ID="current"
+    fi
+
+    if [[ -z "${BASE_URL}" ]]; then
+        BASE_URL="https://${CHANNEL_ID}.release.flatcar-linux.net/${BOARD}"
+    fi
+
+    # if the version is "current", resolve the actual version number
+    if [[ "${VERSION_ID}" == "current" ]]; then
+        local VERSIONTXT_URL="${BASE_URL}/${VERSION_ID}/version.txt"
+        VERSION_ID=$(wget ${WGET_ARGS} -qO- "${VERSIONTXT_URL}" | sed -n 's/^FLATCAR_VERSION=//p')
+        if [[ -z "${VERSION_ID}" ]]; then
+            echo "$0: version.txt unavailable: ${VERSIONTXT_URL}" >&2
+            exit 1
+        fi
+        echo "Current version of Flatcar Container Linux ${CHANNEL_ID} is ${VERSION_ID}"
+    fi
+
+    local IMAGE_URL="${BASE_URL}/${VERSION_ID}/${IMAGE_NAME}"
+    local SIG_NAME="${IMAGE_NAME}.sig"
+    local SIG_URL="${BASE_URL}/${VERSION_ID}/${SIG_NAME}"
+
+    if ! wget ${WGET_ARGS} --spider --quiet "${IMAGE_URL}"; then
+        echo "$0: Image URL unavailable: $IMAGE_URL" >&2
+        exit 1
+    fi
+
+    if ! wget ${WGET_ARGS} --spider --quiet "${SIG_URL}"; then
+        echo "$0: Image signature unavailable: $SIG_URL" >&2
+        exit 1
+    fi
+
+    # Setup GnuPG for verifying the image signature
+    export GNUPGHOME="${WORKDIR}/gnupg"
+    mkdir -p "${GNUPGHOME}"
+    if [ -n "${KEYFILE}" ]; then
+        gpg --batch --quiet --import < "${KEYFILE}"
+    else
+        gpg --batch --quiet --import <<< "${GPG_KEY}"
+    fi
+
+    echo "Downloading the signature for ${IMAGE_URL}..."
+    wget ${WGET_ARGS} --no-verbose -O "${WORKDIR}/${SIG_NAME}" "${SIG_URL}"
+
+    echo "Downloading image to disk, and verifying ${IMAGE_NAME}..."
+    if ! wget ${WGET_ARGS} --no-verbose . "${IMAGE_URL}" \
+        | gpg --batch --trusted-key "${GPG_LONG_ID}" \
+            --verify "${WORKDIR}/${SIG_NAME}" -
+    then
+        local EEND=( "${PIPESTATUS[@]}" )
+        [ ${EEND[0]} -ne 0 ] && echo "${EEND[0]}: Download of ${IMAGE_NAME} did not complete" >&2
+        [ ${EEND[1]} -ne 0 ] && echo "${EEND[1]}: Cannot expand ${IMAGE_NAME} to ${DEVICE}" >&2
+        [ ${EEND[2]} -ne 0 ] && echo "${EEND[2]}: GPG signature verification failed for ${IMAGE_NAME}" >&2
+        exit 1
+    fi
+
+    VERSION_SUMMARY+=" ${CHANNEL_ID} ${VERSION_ID}${OEM_ID:+ (${OEM_ID})}"
+}
+
+
+while getopts "V:B:C:I:d:o:c:e:i:t:b:k:f:nsyvhD" OPTION
 do
     case $OPTION in
         V) VERSION_ID="$OPTARG"; VERSION_SPECIFIED=1 ;;
@@ -362,6 +440,7 @@ do
         y) DRY_RUN=1 ;;
         v) set -x ;;
         h) echo "$USAGE"; exit;;
+        D) save_image_to_disk;;
         *) exit 1;;
     esac
 done
@@ -556,6 +635,8 @@ function install_from_url() {
 
     VERSION_SUMMARY+=" ${CHANNEL_ID} ${VERSION_ID}${OEM_ID:+ (${OEM_ID})}"
 }
+
+
 
 function write_cloudinit() if [[ -n "${CLOUDINIT}${COPY_NET}" ]]; then
     # The ROOT partition should be #9 but make no assumptions here!
