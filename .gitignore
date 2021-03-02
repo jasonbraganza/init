@@ -6,3 +6,5 @@ _trial_temp
 
 gopath/
 *.test
+
+bin/get-flatcar

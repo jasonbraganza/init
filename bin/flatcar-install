@@ -340,12 +340,14 @@ IMAGE_FILE=
 KEYFILE=
 VERSION_SUMMARY='Flatcar Container Linux'
 
+
 WGET_ARGS="--tries 10 --timeout=20 --retry-connrefused"
 
 function save_image_to_disk() {
     # Ensure that required executables exist before proceeding
     type -P wget >/dev/null || { echo 'Missing wget!' >&2 ; exit 1 ; }
     type -P gpg >/dev/null || { echo 'Missing gpg!' >&2 ; exit 1 ; }
+    
 
     local IMAGE_NAME="flatcar_production_image.bin.bz2"
     if [[ -n "${OEM_ID}" ]]; then
@@ -380,6 +382,10 @@ function save_image_to_disk() {
     local IMAGE_URL="${BASE_URL}/${VERSION_ID}/${IMAGE_NAME}"
     local SIG_NAME="${IMAGE_NAME}.sig"
     local SIG_URL="${BASE_URL}/${VERSION_ID}/${SIG_NAME}"
+    
+    # Set the download folder a subfolder in my current working directory
+    LOCAL_DEST_DIR="${PWD}/${VERSION_ID}"
+    mkdir -p "${LOCAL_DEST_DIR}"
 
     if ! wget ${WGET_ARGS} --spider --quiet "${IMAGE_URL}"; then
         echo "$0: Image URL unavailable: $IMAGE_URL" >&2
@@ -392,7 +398,7 @@ function save_image_to_disk() {
     fi
 
     # Setup GnuPG for verifying the image signature
-    export GNUPGHOME="${WORKDIR}/gnupg"
+    export GNUPGHOME="${LOCAL_DEST_DIR}/gnupg"
     mkdir -p "${GNUPGHOME}"
     if [ -n "${KEYFILE}" ]; then
         gpg --batch --quiet --import < "${KEYFILE}"
@@ -401,12 +407,13 @@ function save_image_to_disk() {
     fi
 
     echo "Downloading the signature for ${IMAGE_URL}..."
-    wget ${WGET_ARGS} --no-verbose -O "${WORKDIR}/${SIG_NAME}" "${SIG_URL}"
+    wget ${WGET_ARGS} --no-verbose -O "${SIG_URL}" "${LOCAL_DEST_DIR}" 
 
     echo "Downloading image to disk, and verifying ${IMAGE_NAME}..."
+    echo "This is where the download happens later"
     if ! wget ${WGET_ARGS} "${IMAGE_URL}" \
         | gpg --batch --trusted-key "${GPG_LONG_ID}" \
-            --verify "${WORKDIR}/${SIG_NAME}" -
+            --verify "${LOCAL_DEST_DIR}/${SIG_NAME}" -
     then
         local EEND=( "${PIPESTATUS[@]}" )
         echo $EEND
