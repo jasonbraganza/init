@@ -407,23 +407,12 @@ function save_image_to_disk() {
     fi
 
     echo "Downloading the signature for ${IMAGE_URL}..."
-    wget ${WGET_ARGS} --no-verbose -O "${SIG_URL}" "${LOCAL_DEST_DIR}" 
-
+    wget ${WGET_ARGS} --no-verbose -O "${LOCAL_DEST_DIR}/${SIG_NAME}" "${SIG_URL}" 
+    
     echo "Downloading image to disk, and verifying ${IMAGE_NAME}..."
-    echo "This is where the download happens later"
-    if ! wget ${WGET_ARGS} "${IMAGE_URL}" \
-        | gpg --batch --trusted-key "${GPG_LONG_ID}" \
-            --verify "${LOCAL_DEST_DIR}/${SIG_NAME}" -
-    then
-        local EEND=( "${PIPESTATUS[@]}" )
-        echo $EEND
-        # [ ${EEND[0]} -ne 0 ] && echo "${EEND[0]}: Download of ${IMAGE_NAME} did not complete" >&2
-        # [ ${EEND[1]} -ne 0 ] && echo "${EEND[1]}: Cannot expand ${IMAGE_NAME} to ${DEVICE}" >&2
-        # [ ${EEND[2]} -ne 0 ] && echo "${EEND[2]}: GPG signature verification failed for ${IMAGE_NAME}" >&2
-        exit 1
-    fi
-
-    VERSION_SUMMARY+=" ${CHANNEL_ID} ${VERSION_ID}${OEM_ID:+ (${OEM_ID})}"
+    wget ${WGET_ARGS} -O "${LOCAL_DEST_DIR}/${IMAGE_NAME}" "${IMAGE_URL}"
+    gpg --batch  --verify "${LOCAL_DEST_DIR}/${SIG_NAME}" "${LOCAL_DEST_DIR}/${IMAGE_NAME}" 
+    exit
 }
 
 
