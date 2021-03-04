@@ -400,17 +400,15 @@ function save_image_to_disk() {
     # Setup GnuPG for verifying the image signature
     export GNUPGHOME="${LOCAL_DEST_DIR}/gnupg"
     mkdir -p "${GNUPGHOME}"
-    if [ -n "${KEYFILE}" ]; then
-        gpg --batch --quiet --import < "${KEYFILE}"
-    else
-        gpg --batch --quiet --import <<< "${GPG_KEY}"
-    fi
-
+    wget ${WGET_ARGS} --no-verbose -O "${GNUPGHOME}/Flatcar_Image_Signing_Key.asc" https://flatcar-linux.org/security/image-signing-key/Flatcar_Image_Signing_Key.asc 
+    gpg --batch --quiet --import "${GNUPGHOME}/Flatcar_Image_Signing_Key.asc"
+    
     echo "Downloading the signature for ${IMAGE_URL}..."
     wget ${WGET_ARGS} --no-verbose -O "${LOCAL_DEST_DIR}/${SIG_NAME}" "${SIG_URL}" 
     
-    echo "Downloading image to disk, and verifying ${IMAGE_NAME}..."
-    wget ${WGET_ARGS} -O "${LOCAL_DEST_DIR}/${IMAGE_NAME}" "${IMAGE_URL}"
+    echo "Downloading image to disk to the ${PWD}/${VERSION_ID} directory," 
+    echo "and verifying ${IMAGE_NAME}..."
+    wget ${WGET_ARGS} --no-verbose --show-progress -O "${LOCAL_DEST_DIR}/${IMAGE_NAME}" "${IMAGE_URL}"
     gpg --batch  --verify "${LOCAL_DEST_DIR}/${SIG_NAME}" "${LOCAL_DEST_DIR}/${IMAGE_NAME}" 
     exit
 }
